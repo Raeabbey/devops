@@ -45,8 +45,8 @@ resource "aws_internet_gateway" "pricing_demo" {
 data "aws_availability_zones" "available" {}
 
 resource "aws_subnet" "pricing_demo" {
-  vpc_id = aws_vpc.pricing_demo.id
-  cidr_block = cidrsubnet(aws_vpc.pricing_demo.cidr_block, 8, 0)
+  vpc_id            = aws_vpc.pricing_demo.id
+  cidr_block        = cidrsubnet(aws_vpc.pricing_demo.cidr_block, 8, 0)
   availability_zone = data.aws_availability_zones.available.names[0]
 
   tags = {
@@ -96,8 +96,32 @@ resource "aws_security_group" "pricing_demo" {
   }
 }
 
+data "archive_file" "zip_python_code" {
+  type        = "zip"
+  source_file = "${path.module}/pricing.py"
+  output_path = "${path.module}/pricing.zip"
+}
+
 resource "aws_lambda_function" "pricing_demo" {
-  # TODO: implement function
+  function_name = "pricing-demo"
+  filename      = "${path.module}/pricing.zip"
+  role          = aws_iam_role.pricing_demo.arn
+  handler       = "pricing.handler"
+  runtime       = "python3.8"
+  vpc_config {
+    subnet_ids         = [aws_subnet.pricing_demo.id]
+    security_group_ids = [aws_security_group.pricing_demo.id]
+  }
+  environment {
+    variables = {
+      SEED = 5
+    }
+  }
+}
+
+resource "aws_lambda_function_url" "pricing_demo_url" {
+  function_name      = aws_lambda_function.pricing_demo.function_name
+  authorization_type = "NONE"
 }
 
 resource "aws_cloudwatch_metric_alarm" "pricing_demo_errors" {
@@ -114,4 +138,9 @@ resource "aws_cloudwatch_metric_alarm" "pricing_demo_errors" {
   dimensions = {
     FunctionName = aws_lambda_function.pricing_demo.function_name
   }
+}
+
+output "pricing_demo_url" {
+  value = aws_lambda_function_url.pricing_demo_url.function_url
+
 }
